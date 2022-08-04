@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-init
+  labels:
+    app: boundary
+spec:
+  template:
+    spec:
+      containers:
+      - name: database-init
+        image: jacobmammoliti/boundary:0.5.1
+        command:
+          - "/bin/sh"
+          - "-c"
+          - |
+            export POSTGRES_CONNECTION=postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgresql:5432/$POSTGRES_DB?sslmode=disable
+            boundary database init -config /boundary/boundary.hcl
+        env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: database
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: token
+                  key: token
+        volumeMounts:
+          - name: controller-config
+            mountPath: /boundary
+      restartPolicy: Never
+      volumes:
+        - name: controller-config
+          configMap:
+            name: controller-config
+        - name: psql-creds
+          secret:
+            secretName: psql-creds

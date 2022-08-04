@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: boundary-controller
+  labels:
+    app: boundary
+    type: controller
+spec:
+  selector:
+    matchLabels:
+      app: boundary
+      type: controller
+  template:
+    metadata:
+      labels:
+        app: boundary
+        type: controller
+    spec:
+      serviceAccountName: boundary-sa
+      containers:
+        - name: boundary
+          image: jacobmammoliti/boundary:0.5.1
+          imagePullPolicy: Always
+          command:
+            - "/bin/sh"
+            - "-c"
+          args:
+            - |
+              export POSTGRES_CONNECTION=postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@postgresql:5432/$POSTGRES_DB?sslmode=disable
+              boundary server -config /boundary/boundary.hcl
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: psql-creds
+                  key: database
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: token
+                  key: token
+            - name: VAULT_ADDR
+              value: "https://vault.vault.svc.cluster.local:8200"
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+          readinessProbe:
+            tcpSocket:
+              port: 9200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 9200
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          ports:
+            - containerPort: 9200
+              name: api
+            - containerPort: 9201
+              name: cluster
+          volumeMounts:
+            - name: controller-config
+              mountPath: /boundary
+            - name: tls
+              mountPath: /boundary/userconfig/tls
+            - name: tls-ca
+              mountPath: /boundary/userconfig/tls-ca
+      volumes:
+        - name: controller-config
+          configMap:
+            name: controller-config
+        - name: psql-creds
+          secret:
+            secretName: psql-creds
+        - name: tls
+          secret:
+            secretName: tls
+        - name: tls-ca
+          secret:
+            secretName: tls-ca

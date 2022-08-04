@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: worker-config
+  labels:
+    app: boundary
+data:
+  boundary.hcl: |
+    disable_mlock = true
+
+    worker {
+      name        = "env://POD_NAME"
+      description = "Boundary worker"
+
+      controllers = ["controller-cluster"]
+      
+      public_addr = "env://HOST_IP"
+    }
+
+    # Public API listener configuration blocks
+    listener "tcp" {
+      address  = "[::]:9202"
+      purpose  = "proxy"
+    }
+
+    kms "transit" {
+      purpose         = "worker-auth"
+      address         = "https://vault.vault.svc.cluster.local:8200"
+      disable_renewal = "false"
+
+      key_name   = "boundary"
+      mount_path = "transit/"
+      namespace  = "root/"
+
+      tls_skip_verify = "true"
+    }
